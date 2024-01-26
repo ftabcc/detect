@@ -1,0 +1,3 @@
+<launch>
+    <node pkg="detect_ai" type="class" name="class" output="screen"/>
+</launch>

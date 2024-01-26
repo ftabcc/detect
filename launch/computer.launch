@@ -1,0 +1,3 @@
+<launch>
+    <node pkg="detect_ai" type="com" name="com" output="screen"/>
+</launch>

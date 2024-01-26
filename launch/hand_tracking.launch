@@ -1,0 +1,3 @@
+<launch>
+    <node pkg="detect_ai" type="hand_tracking" name="hand_tracking" output="screen"/>
+</launch>

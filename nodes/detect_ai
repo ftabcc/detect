@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+
+import rospy
+from sensor_msgs.msg import Image
+import cv2  
+import sys 
+import mediapipe as mp 
+import math 
+from cv_bridge import CvBridge, CvBridgeError
+from geometry_msgs.msg import Twist
+
+class CameraSubscriber:
+    def __init__(self):
+        # Initialize the ROS node
+        rospy.init_node('camera_subscriber_node', anonymous=True)
+        
+        self.cvBridge = CvBridge()
+
+        self.mp_drawing = mp.solutions.drawing_utils
+        self.mp_drawing_styles = mp.solutions.drawing_styles
+        self.mp_hands = mp.solutions.hands  # object for hand detection
+        self.hands = self.mp_hands.Hands()
+
+        # For teleop
+        self.twist = Twist()
+        self.pub = rospy.Publisher('cmd_vel', Twist, queue_size=10)
+
+        # Create a subscriber with the specified topic and message type, and specify the callback function
+        rospy.Subscriber('/camera/image', Image, self.camera_callback)
+
+    def camera_callback(self, msg):
+        
+        if msg != None:
+            pass
+        else:
+            rospy.loginfo("none_data")
+
+        frame = self.cvBridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+        frame = cv2.flip(frame, 1)  # flip left &right
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # convert color for mediapipe
+        results = self.hands.process(image)  # result about detection
+        
+        if results.multi_hand_landmarks:  # hand detection is true
+            for hand_landmarks in results.multi_hand_landmarks:  # draw joint points
+                self.mp_drawing.draw_landmarks(
+                    frame,
+                    hand_landmarks,
+                    self.mp_hands.HAND_CONNECTIONS,
+                    self.mp_drawing_styles.get_default_hand_landmarks_style(),
+                    self.mp_drawing_styles.get_default_hand_connections_style(),
+                )
+
+                points = hand_landmarks.landmark 
+
+                # thumb
+                if self.distance(points[4], points[9]) < self.distance(points[3], points[9]):
+                    fingers = "0" 
+                    rospy.loginfo("folded")
+
+                    rospy.loginfo("go straight")
+                    linear_vel = 0.1
+
+                else:
+                    fingers = "1"  
+                    rospy.loginfo("unfolded")
+
+                    rospy.loginfo("stop")
+                    linear_vel = 0.0
+                
+                self.twist.linear.x = linear_vel; self.twist.linear.y = 0.0; self.twist.linear.z = 0.0
+                self.twist.angular.x = 0.0; self.twist.angular.y = 0.0; self.twist.angular.z = 0.0
+                
+                self.pub.publish(self.twist)
+
+                cv2.putText(  # draw index of folding
+                    frame,
+                    fingers,
+                    (int(points[4].x * frame.shape[1]), int(points[4].y * frame.shape[0])),
+                    cv2.FONT_HERSHEY_COMPLEX,
+                    1,
+                    (0, 255, 0),
+                    5,
+                )
+
+                # other fingers
+                for i in range(8, 21, 4):
+                    if self.distance(points[i], points[0]) < self.distance(points[i - 1], points[0]):
+                        fingers = "0"  
+                    else:
+                        fingers = "1"
+
+                    cv2.putText(  # draw index of folding
+                        frame,
+                        fingers,
+                        (int(points[i].x * frame.shape[1]), int(points[i].y * frame.shape[0])),
+                        cv2.FONT_HERSHEY_COMPLEX,
+                        1,
+                        (0, 255, 0),
+                        5,
+                    )
+        else:   
+            pass
+
+        cv2.imshow("hands", frame)  # show the frame
+
+        key = cv2.waitKey(5) & 0xFF  # insert key
+        if key == 27:  # ESC key
+            cv2.destroyAllWindows()
+    
+
+    # 거리 계산 함수 선언
+    def distance(self, p1, p2):
+        return math.dist((p1.x, p1.y), (p2.x, p2.y))  # get distance
+
+        
+
+    def run(self):
+        # Spin to keep the script from exiting
+        rospy.spin()
+
+if __name__ == '__main__':
+    # Create an instance of the CameraSubscriber class
+    camera_subscriber = CameraSubscriber()
+    # Run the subscriber
+    camera_subscriber.run()
